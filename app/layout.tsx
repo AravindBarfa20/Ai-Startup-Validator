@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import PlausibleProvider from "next-plausible";
 import localFont from "next/font/local";
 import "./globals.css";
 
@@ -12,11 +11,10 @@ const geistMono = localFont({
   variable: "--font-geist-mono",
 });
 
-let title = "Tweetbio – AI Twitter Bio Generator";
-let description = "Generate your next Twitter bio in seconds";
-let url = "https://www.twitterbio.io/";
-let ogimage = "https://www.twitterbio.io/og-image.png";
-let sitename = "twitterbio.io";
+const title = "PitchPerfect AI – Startup Idea Validator";
+const description =
+  "Get your startup idea brutally roasted and scored by a ruthless AI investor. Instant feedback, tech stack recommendations, and zero sugar-coating.";
+const url = "https://pitchperfect.ai/";
 
 export const metadata: Metadata = {
   metadataBase: new URL(url),
@@ -26,17 +24,15 @@ export const metadata: Metadata = {
     icon: "/favicon.ico",
   },
   openGraph: {
-    images: [ogimage],
     title,
     description,
-    url: url,
-    siteName: sitename,
+    url,
+    siteName: "PitchPerfect AI",
     locale: "en_US",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    images: [ogimage],
     title,
     description,
   },
@@ -49,9 +45,6 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="h-full">
-      <head>
-        <PlausibleProvider domain="twitterbio.io" />
-      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

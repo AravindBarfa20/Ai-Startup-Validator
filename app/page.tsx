@@ -1,180 +1,283 @@
 "use client";
 
-import Image from "next/image";
-import { useRef, useState } from "react";
-import { Toaster, toast } from "react-hot-toast";
-import DropDown, { VibeType } from "../components/DropDown";
-import Footer from "../components/Footer";
-import Header from "../components/Header";
-import LoadingDots from "../components/LoadingDots";
-import Toggle from "../components/Toggle";
-import { ChatCompletionStream } from "together-ai/lib/ChatCompletionStream";
+import { useState } from "react";
+
+interface Competitor { name: string; note: string; }
+
+interface ValidationResult {
+  score: number;
+  verdict: string;
+  roast: string;
+  strengths: string[];
+  tech_stack: string[];
+  upgrades: string[];
+  competitors: Competitor[];
+  market_size: string;
+  go_to_market: string;
+  monetization: string;
+}
+
+function ScoreRing({ score, color }: { score: number; color: string }) {
+  const r = 54;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (score / 100) * circ;
+  return (
+    <svg width="144" height="144" viewBox="0 0 144 144"
+      style={{ filter: `drop-shadow(0 0 18px ${color}66)`, flexShrink: 0 }}>
+      <circle cx="72" cy="72" r={r} fill="none" stroke="rgba(40,18,5,0.9)" strokeWidth="12" />
+      <circle cx="72" cy="72" r={r} fill="none"
+        stroke={color} strokeWidth="12" strokeLinecap="round"
+        strokeDasharray={circ} strokeDashoffset={offset}
+        transform="rotate(-90 72 72)"
+        style={{ transition: "stroke-dashoffset 1.4s cubic-bezier(0.22,1,0.36,1), stroke 0.5s" }} />
+      <text x="72" y="66" textAnchor="middle" dominantBaseline="middle"
+        fill={color} fontSize="32" fontWeight="900" fontFamily="inherit">{score}</text>
+      <text x="72" y="86" textAnchor="middle" dominantBaseline="middle"
+        fill="rgba(120,60,20,0.7)" fontSize="12" fontFamily="inherit">/ 100</text>
+    </svg>
+  );
+}
+
+const PILL_COLORS = ["#ffaa66", "#ffaaaa", "#ffe680", "#80e8ff"];
+const PILL_CLASSES = ["tp-0", "tp-1", "tp-2", "tp-3"];
+
+function getScoreColor(score: number) {
+  return score > 70 ? "#00e5a0" : score > 40 ? "#ffb700" : "#ff3d3d";
+}
+function getVerdictClass(verdict: string) {
+  if (!verdict) return "";
+  const v = verdict.toLowerCase();
+  if (v.includes("build")) return "verdict-build";
+  if (v.includes("pivot")) return "verdict-pivot";
+  return "verdict-dead";
+}
+function getVerdictEmoji(verdict: string) {
+  if (!verdict) return "";
+  const v = verdict.toLowerCase();
+  if (v.includes("build")) return "🚀";
+  if (v.includes("pivot")) return "🔄";
+  return "💀";
+}
 
 export default function Home() {
-  const [loading, setLoading] = useState(false);
-  const [bio, setBio] = useState("");
-  const [vibe, setVibe] = useState<VibeType>("Professional");
-  const [generatedBios, setGeneratedBios] = useState<String>("");
-  const [isLlama, setIsLlama] = useState(false);
+  const [idea, setIdea]     = useState("");
+  const [loading, setLoad]  = useState(false);
+  const [result, setResult] = useState<ValidationResult | null>(null);
+  const [error, setError]   = useState<string | null>(null);
 
-  const bioRef = useRef<null | HTMLDivElement>(null);
-
-  const scrollToBios = () => {
-    if (bioRef.current !== null) {
-      bioRef.current.scrollIntoView({ behavior: "smooth" });
+  async function validate() {
+    if (!idea.trim()) return;
+    setLoad(true); setResult(null); setError(null);
+    try {
+      const res  = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idea }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error ?? "Something went wrong.");
+      setResult(data as ValidationResult);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unexpected error.");
+    } finally {
+      setLoad(false);
     }
-  };
+  }
 
-  const prompt = `Generate 3 ${
-    vibe === "Casual" ? "relaxed" : vibe === "Funny" ? "silly" : "Professional"
-  } twitter biographies with no hashtags and clearly labeled "1.", "2.", and "3.". Only return these 3 twitter bios, nothing else. ${
-    vibe === "Funny" ? "Make the biographies humerous" : ""
-  }Make sure each generated biography is less than 300 characters, has short sentences that are found in Twitter bios, and feel free to use this context as well: ${bio}${
-    bio.slice(-1) === "." ? "" : "."
-  }`;
-
-  const generateBio = async (e: any) => {
-    e.preventDefault();
-    setGeneratedBios("");
-    setLoading(true);
-    const response = await fetch("/api/together", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        prompt,
-        model: isLlama
-          ? "openai/gpt-oss-20b"
-          : "Qwen/Qwen3.5-9B",
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(response.statusText);
-    }
-
-    const runner = ChatCompletionStream.fromReadableStream(response.body!);
-    runner.on("content", (delta) => {
-      setLoading(false);
-      setGeneratedBios((prev) => prev + delta);
-    });
-    runner.on("error", (err) => {
-      console.error("stream error:", err);
-      setLoading(false);
-    });
-
-    scrollToBios();
-  };
+  const scoreColor = result ? getScoreColor(result.score) : "#ff6b00";
 
   return (
-    <div className="flex max-w-5xl mx-auto flex-col items-center justify-center py-2 min-h-screen">
-      <Header />
-      <main className="flex flex-1 w-full flex-col items-center justify-center text-center px-4 mt-12 sm:mt-20">
-        <p className="border rounded-2xl py-1 px-4 text-slate-500 text-sm mb-5 hover:scale-105 transition duration-300 ease-in-out">
-          <b>126,657</b> bios generated so far
-        </p>
-        <h1 className="sm:text-6xl text-4xl max-w-[708px] font-bold text-slate-900">
-          Generate your next Twitter bio using AI
-        </h1>
-        <div className="mt-7">
-          <Toggle isGPT={isLlama} setIsGPT={setIsLlama} />
+    <>
+      {/* Background */}
+      <div className="bg-wrap">
+        <div className="bg-glow" />
+        <div className="bg-grid" />
+        <div className="bg-orb-l" />
+        <div className="bg-orb-r" />
+        <div className="bg-orb-b" />
+      </div>
+
+      <main className="page">
+        {/* Badge */}
+        <div className="badge">
+          <span className="badge-dot" />
+          AI Investor · Startup Validator
         </div>
 
-        <div className="max-w-xl w-full">
-          <div className="flex mt-10 items-center space-x-3">
-            <Image
-              src="/1-black.png"
-              width={30}
-              height={30}
-              alt="1 icon"
-              className="mb-5 sm:mb-0"
-            />
-            <p className="text-left font-medium">
-              Drop in your job{" "}
-              <span className="text-slate-500">(or your favorite hobby)</span>.
-            </p>
-          </div>
+        {/* Hero */}
+        <h1 className="hero-title">PitchPerfect AI</h1>
+        <p className="hero-sub">
+          Get your startup idea <em>roasted, scored &amp; fully analyzed</em> by a ruthless AI investor.
+          Market size, competitors, upgrades — the full picture.
+        </p>
+
+        {/* Input Card */}
+        <div className="glass-card input-card" style={{ width: "100%" }}>
+          <label className="input-label" htmlFor="startup-idea">
+            💡 Describe Your Startup Idea
+          </label>
           <textarea
-            value={bio}
-            onChange={(e) => setBio(e.target.value)}
-            rows={4}
-            className="w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black my-5"
-            placeholder={"e.g. Amazon CEO"}
+            id="startup-idea"
+            className="input-textarea"
+            placeholder="e.g. An AI-powered platform that helps solo founders validate their ideas, find co-founders, and automate their early-stage GTM strategy..."
+            value={idea}
+            onChange={(e) => setIdea(e.target.value)}
+            maxLength={800}
+            disabled={loading}
           />
-          <div className="flex mb-5 items-center space-x-3">
-            <Image src="/2-black.png" width={30} height={30} alt="1 icon" />
-            <p className="text-left font-medium">Select your vibe.</p>
-          </div>
-          <div className="block">
-            <DropDown vibe={vibe} setVibe={(newVibe) => setVibe(newVibe)} />
-          </div>
-          {loading ? (
-            <button
-              className="bg-black rounded-xl text-white font-medium px-4 py-2 sm:mt-10 mt-8 hover:bg-black/80 w-full"
-              disabled
-            >
-              {isLlama ? (
-                <span className="flex items-center justify-center gap-2">
-                  Thinking
-                  <LoadingDots color="white" style="large" />
+          <div className="input-meta">{idea.length} / 800</div>
+          <button id="validate-btn" className="btn" onClick={validate} disabled={loading || !idea.trim()}>
+            {loading
+              ? <><span className="spinner" /> Consulting the investor…</>
+              : <>🔥 Validate My Idea</>}
+          </button>
+          {error && <div className="error-box" role="alert">⚠️ {error}</div>}
+        </div>
+
+        {/* Results */}
+        {result && (
+          <div className="results" role="region" aria-label="Validation Results">
+
+            {/* Score + Verdict */}
+            <div className="glass-card result-card">
+              <div className="section-label">Investor Score</div>
+              <div className="verdict-badge" style={{ marginBottom: 20 }}>
+                <span className={`verdict-badge ${getVerdictClass(result.verdict)}`}>
+                  {getVerdictEmoji(result.verdict)} {result.verdict || "ANALYZING"}
                 </span>
-              ) : (
-                <LoadingDots color="white" style="large" />
-              )}
-            </button>
-          ) : (
-            <button
-              className="bg-black rounded-xl text-white font-medium px-4 py-2 sm:mt-10 mt-8 hover:bg-black/80 w-full"
-              onClick={(e) => generateBio(e)}
-            >
-              Generate your bio &rarr;
-            </button>
-          )}
-        </div>
-        <Toaster
-          position="top-center"
-          reverseOrder={false}
-          toastOptions={{ duration: 2000 }}
-        />
-        <hr className="h-px bg-gray-700 border-1 dark:bg-gray-700" />
-        <div className="space-y-10 my-10">
-          {generatedBios && (
-            <>
-              <div>
-                <h2
-                  className="sm:text-4xl text-3xl font-bold text-slate-900 mx-auto"
-                  ref={bioRef}
-                >
-                  Your generated bios
-                </h2>
               </div>
-              <div className="space-y-8 flex flex-col items-center justify-center max-w-xl mx-auto">
-                {generatedBios
-                  .substring(generatedBios.indexOf("1") + 3)
-                  .split(/2\.|3\./)
-                  .map((generatedBio) => {
-                    return (
-                      <div
-                        className="bg-white rounded-xl shadow-md p-4 hover:bg-gray-100 transition cursor-copy border"
-                        onClick={() => {
-                          navigator.clipboard.writeText(generatedBio);
-                          toast("Bio copied to clipboard", {
-                            icon: "✂️",
-                          });
-                        }}
-                        key={generatedBio}
-                      >
-                        <p>{generatedBio}</p>
+              <div className="score-layout">
+                <div className="score-ring-wrap">
+                  <ScoreRing score={result.score} color={scoreColor} />
+                </div>
+                <div className="score-info">
+                  <div className="score-heading" style={{ color: scoreColor }}>
+                    {result.score > 70 ? "Worth a Second Look"
+                      : result.score > 40 ? "Needs More Thinking"
+                      : "Back to the Drawing Board"}
+                  </div>
+                  <p className="score-desc">
+                    {result.score > 70
+                      ? "Your idea shows genuine promise. There's a real market here. Sharpen the GTM and unit economics."
+                      : result.score > 40
+                      ? "There's a kernel of something interesting, but fundamental pivots are needed before this is investable."
+                      : "This idea has critical flaws in the core assumptions. Rethink before spending a single dollar."}
+                  </p>
+                  <div className="score-bar-bg">
+                    <div className="score-bar-fill"
+                      style={{ width: `${result.score}%`, background: scoreColor, boxShadow: `0 0 12px ${scoreColor}` }} />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Strengths */}
+            {result.strengths?.length > 0 && (
+              <div className="glass-card result-card">
+                <div className="section-label">✅ What You Got Right</div>
+                <div className="strengths-list">
+                  {result.strengths.map((s, i) => (
+                    <div key={i} className="strength-item">
+                      <span className="strength-icon">✓</span>
+                      {s}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Roast */}
+            <div className="glass-card result-card">
+              <div className="section-label">The Roast</div>
+              <span className="roast-emoji">🔥</span>
+              <blockquote className="roast-quote">{result.roast}</blockquote>
+            </div>
+
+            {/* Upgrades */}
+            {result.upgrades?.length > 0 && (
+              <div className="glass-card result-card">
+                <div className="section-label">⚡ Key Upgrades to Boost Your Score</div>
+                <div className="upgrades-list">
+                  {result.upgrades.map((u, i) => (
+                    <div key={i} className="upgrade-item">
+                      <span className="upgrade-num">{i + 1}</span>
+                      {u}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Competitors */}
+            {result.competitors?.length > 0 && (
+              <div className="glass-card result-card">
+                <div className="section-label">🏆 You&apos;re Up Against</div>
+                <div className="competitors-grid">
+                  {result.competitors.map((c, i) => (
+                    <div key={i} className="competitor-item">
+                      <span className="competitor-icon">⚔️</span>
+                      <div>
+                        <div className="competitor-name">{c.name}</div>
+                        <div className="competitor-note">{c.note}</div>
                       </div>
-                    );
-                  })}
+                    </div>
+                  ))}
+                </div>
               </div>
-            </>
-          )}
-        </div>
+            )}
+
+            {/* Market + GTM */}
+            <div className="two-col">
+              {result.market_size && (
+                <div className="glass-card info-block">
+                  <span className="info-icon">📈</span>
+                  <div className="info-title">Market Opportunity</div>
+                  <div className="info-value market-size">{result.market_size}</div>
+                </div>
+              )}
+              {result.monetization && (
+                <div className="glass-card info-block">
+                  <span className="info-icon">💰</span>
+                  <div className="info-title">Monetization Model</div>
+                  <div className="info-value">{result.monetization}</div>
+                </div>
+              )}
+            </div>
+
+            {result.go_to_market && (
+              <div className="glass-card result-card">
+                <div className="section-label">🎯 Go-To-Market Strategy</div>
+                <p style={{ fontSize: 14.5, color: "#e8c4a0", lineHeight: 1.75 }}>
+                  {result.go_to_market}
+                </p>
+              </div>
+            )}
+
+            {/* Tech Stack */}
+            <div className="glass-card result-card">
+              <div className="section-label">🛠 Recommended MVP Stack</div>
+              <div className="tech-grid">
+                {result.tech_stack.map((tech, i) => (
+                  <span key={i} className={`tech-pill ${PILL_CLASSES[i % 4]}`}>
+                    <span style={{
+                      width: 7, height: 7, borderRadius: "50%",
+                      background: PILL_COLORS[i % 4],
+                      display: "inline-block", flexShrink: 0,
+                      boxShadow: `0 0 8px ${PILL_COLORS[i % 4]}`,
+                    }} />
+                    {tech}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+          </div>
+        )}
+
+        <footer className="footer">
+          Built with Next.js &amp; Groq · Powered by LLaMA 3.3 70B
+        </footer>
       </main>
-      <Footer />
-    </div>
+    </>
   );
 }
